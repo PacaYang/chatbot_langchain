@@ -22,7 +22,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
 import json
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.messages import messages_to_dict, messages_from_dict
 
 from pydantic import BaseModel
@@ -89,7 +89,9 @@ def ask_or_recommend(state: State):
     print("=== ask_or_recommend called ===")
     print(response.content)
     print(state["rec_prod"],  state["reci_form"])
-    return {"messages": [response], "rec_prod": state["rec_prod"], "reci_form": state["reci_form"]}
+    #return {"messages": [response], "rec_prod": state["rec_prod"], "reci_form": state["reci_form"]}
+
+    return response.content
 
 def ask_more(state: State):
     """Ask follow-up questions."""
@@ -113,12 +115,11 @@ def ask_more(state: State):
     return {"messages": [response], "rec_prod": state["rec_prod"], "reci_form": state["reci_form"]}
 
 def check_if_confident(state: State):
-    last_ai = next((m for m in reversed(state["messages"]) if isinstance(m, AIMessage)), None)
+    last_ai = next((m for m in reversed(state["messages"]) if isinstance(m, ToolMessage)), None)
     if last_ai:
         content = last_ai.content.lower()
         if any(x in content for x in ["we recommend", "you should try", "i suggest", "i recommend"]):
             print('--- route to form ----')
-            state['rec_prod'] = True
             return "store_product_response"
     print('--- route to ask more ---')
     return "ask_more"
@@ -128,6 +129,7 @@ def check_if_confident(state: State):
 graph_builder = StateGraph(State)
 
 def store_product_response(state: State):
+    state['rec_prod'] = True
     if state['rec_prod'] == True and state['reci_form'] == False:
         print(' -- FORM -- ')
         return {"messages": [AIMessage(content="__FORM__")], "rec_prod": state["rec_prod"], "reci_form": state["reci_form"]}
@@ -361,7 +363,8 @@ def handle_form():
     f = open(f"form_submission/{session_id}.json", 'w')
     f.write(json.dumps(output_dict, indent=4))
     f.close()
-    
+    session['reci_form'] = True 
+    save_session(session_id, session)
     return jsonify({"message": "Your response has been recorded!"})
 
 
